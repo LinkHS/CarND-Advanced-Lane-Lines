@@ -16,8 +16,10 @@ The goals / steps of this project are the following:
 
 ---
 ### Camera calibration
-First, I'll compute the camera calibration using chessboard images.
-Apply a distortion correction to raw images.
+First, I'll compute the camera calibration using chessboard images. Then I will get the camera parameters which will be save to "CamParams-0.pkl" for later use. Using `CamParams.load()` function not only avoids repetitive calibration but also accelerates pre-process speed.
+
+Change the line `if 0:` to `if 1:` if you want switch to calibration mode from load mode.
+> `keep_global_var` and `printvars` is used to remove and show global defined variables.
 
 ```{.python .input}
 %reset -f
@@ -68,10 +70,14 @@ img_undist = cv2.undistort(img_dist, mtx, dist, None, mtx)
 
 util.plot_comparison(img_dist, img_undist)
 
+# Only keep `camParams` in the python environment
 keep_global_var(['camParams']); printvars()
 ```
 
 ### Camera Undistortion
+
+Run below cell to apply a distortion correction to raw images.
+> Notice that this step has been writen into `util.LaneDetector.preProcess()` and will be automatically invoked when `preProcess` runs.
 
 ```{.python .input}
 #fn_img = '../test_images/straight_lines1.jpg'
@@ -92,9 +98,11 @@ keep_global_var(['camParams'])
 
 ---
 ### Perpective Transform
-Compute perpective transform
+Four source points of a quadrangle should be identified for a perspective transform. In order to pick four points in a trapzoidal shape representing a rectangle I have to find a pair of parallel lane lines as straight as possible.
 
-将调整好的 pts1 和 pts2 更新到 util.LaneDetector 的 loadCamParams 函数里面
+I've provided `persTrans.get_y_from_x` and `persTrans.get_x_from_y` to help get the coordinates of the four points in the image coordinate. Fine-tune `pts1` and `pts2` to obtain the best perpective transform.
+
+> Don't forget to update `pts1` and `pts2` to `util.LaneDetector.loadCamParams()` after adjustment.
 
 ```{.python .input}
 pers_img = camParams.undistort(matplotlib.image.imread('../test_images/straight_lines1.jpg'))
@@ -122,6 +130,8 @@ util.plot_comparison(pers_img, pers_img_dst)
 
 keep_global_var(['camParams'])
 ```
+
+Try some other points to see which one is most suitable for using in the pipeline.
 
 ```{.python .input}
 fn_img_list = images = glob.glob('../test_images/my*')
@@ -163,14 +173,17 @@ keep_global_var(['camParams'])
 
 ---
 ### Edge Detection
-Color and Gradient
+I've tried the edge detection method discussed in the class, and also changed the order of edge detection and perspective tranform to find which order is better. The comparison shows that the order of which one going first has little effect on the final result. Overall， edge detection going first will results in fewer noise, so I will do perspective transform after edge detection.
 
-此小节中的相关变量用`edge`开头
+However, from the result shown after running below cell, we can see that the original color and gradient algorithm does not work well under shadow environment such as "myest0.png" and "mytest3.png".
 
 ```{.python .input}
-fn_img_list = images = glob.glob('../test_images/my*')
-fn_img_list.insert(0, '../test_images/straight_lines1.jpg')
-fn_img_list.insert(1, '../test_images/test1.jpg')
+fn_img_list = ['../test_images/mytest0.png',
+               '../test_images/mytest1.png',
+               '../test_images/mytest3.png']
+
+#fn_img_list.insert(0, '../test_images/straight_lines1.jpg')
+#fn_img_list.insert(0, '../test_images/test2.jpg')
 
 from util import EdgeDetector
 laneDetector = util.LaneDetector()
@@ -204,8 +217,7 @@ def detPossibleEdges(img_rgb, sob_x_thresh=(20, 100), sat_thresh=(170, 255), ret
         return sob_x_binary_l | sat_binary
     
 
-if False:
-#for fn_img in fn_img_list:
+for fn_img in fn_img_list:
     # Read and undistort the image
     img_rgb = cv2.cvtColor(cv2.imread(fn_img), cv2.COLOR_BGR2RGB)
     img_rgb = laneDetector.preProcess(img_rgb)
@@ -224,17 +236,15 @@ if False:
     #img_pers_edge_denoised = cv2.morphologyEx(img_pers_edge, cv2.MORPH_OPEN, temp);
 
     # Plot the result
-    util.plot_stack([img_edge, img_edge_pers, img_edge_pers_denoised], titles=[fn_img])
-
     util.plot_stack([tmp['l'], tmp['lx'], tmp['lb']], titles=['%s: l'%fn_img, 'lx', 'lb'])
-    util.plot_stack([tmp['s'], tmp['sb']], titles=['s', 'sb'])
-    util.plot_stack([img_edge, img_edge_pers, img_edge_pers_denoised], 
-                    titles=['img_edge_roi', 'img_edge_pers', 'img_edge_pers_denoised'])
+    util.plot_stack([tmp['s'], tmp['sb'], img_edge_pers_denoised], titles=['s', 'sb', 'img_edge_pers'])
+    #util.plot_stack([img_edge, img_edge_pers, img_edge_pers_denoised], 
+    #                titles=['img_edge_roi', 'img_edge_pers', 'img_edge_pers_denoised'])
     
 keep_global_var([])
 ```
 
-对 `s_channel` 做 sobel
+To make the code can work well in dark environments, instead of thresholding `s_channel` I apply an sobel along horizontal direction on `s_channel` which improve a lot on edge detection. You can pay special attention to "myest0.png" and "mytest3.png".
 
 ```{.python .input}
 fn_img_list = images = glob.glob('../test_images/my*')
@@ -313,6 +323,7 @@ keep_global_var([])
 
 ---
 #### Histogram Peaks
+There is no big change here with class solution, but I take the edge width into account when I compute the histogram. Instead of summing up all pixels along each column, I sum up the pixels inside adjacent columns which I set the width to 40, see `DetEdgePeaks(binary_edges, edge_width=40)`. Thus, many small edges will be dropped as a lane line should have a certain width.
 
 ```{.python .input}
 from util import EdgeDetector, LaneDetector
@@ -379,12 +390,41 @@ for fn_img in fn_img_list:
 keep_global_var([])
 ```
 
----
-#### Fit Polynomial
+#### Sliding windows and Fit Polynomial
+As shown in the previous animation, I have got two highest peaks from the histogram as a starting point for the determining where the lane lines are. Now I will use sliding windows moving upward in the image to determine where the lane lines go. Notice that in my solution the movement trend of sliding windows is used to predict the center of new sliding window, which is very important to track a curved lane line.
 
+In order to save time and utilize the characteristics that lane lines appear at a close position on the two frames, a margin around the previous line position is the first target to search. **However, there is the necessity for checking similarity and confidence of previous lane lines, and switch back to whole region resarch if fail to meet the requirement.**
+
+---
+### Measuring Curvature
+$x = A'y^2 + B'y + C$
+
+o 代表 offset，由于计算 erpective transform 时候引起的
+
+$m(x+o) = A(ny)^2 + B(ny) + C$  
+$mx = (An^2)y^2 + (Bn)y + (C-mo)$  
+$x = (An^2/m)y^2 + (Bn/m)y + (C/m-o)$  
+
+
+$$\begin{cases}
+An^2/m = A' \\
+Bn/m = B' \\
+C/m - o = C'\\
+\end{cases}$$
+
+进一步得到
+  
+$$\begin{cases}
+A = A'm/n^2 \\
+B = B'm/n \\
+C = C'm + mo\\
+\end{cases}$$
+
+
+---
 ## Whole Processing of an Image or a video
 
-```{.python .input}
+```{.python .input  n=6}
 %reset -f
 import numpy as np
 import cv2
@@ -464,14 +504,29 @@ def FrameProcess(img_rgb, track_similarity=90, track_conf=50, show_model=0):
                                                                           rightx_base,
                                                                           return_result=return_slidewindows)
         left_fit, right_fit = LaneDetector.FitPolynomial(left_xy, right_xy)
-    
+        
     laneDetector.pushLane([left_fit, right_fit])
     img_overlay = Overlay_Lane(img_rgb, left_fit, right_fit, laneDetector.pers_shape, laneDetector.pers_M_inv)
     
+#     tmp_left_xy = left_xy.copy() 
+#     tmp_left_xy[0] = np.array(tmp_left_xy[0]) - 96
+#     tmp_right_xy = right_xy.copy() 
+#     tmp_right_xy[0] = np.array(tmp_right_xy[0]) + 170
+    
+#     tmp_left_fit, tmp_right_fit = LaneDetector.FitPolynomial(tmp_left_xy, tmp_right_xy)
+    left_curverad, right_curverad = LaneDetector.MeasureCurvature(left_fit, right_fit,
+                                                                  bin_edge_pers_denoised.shape[0]-1)
+    center_offset = LaneDetector.MeausreVehicelCenter(left_fit, right_fit, bin_edge_pers_denoised.shape)
+    
+    cv2.putText(img_overlay, "radius: %dm"%(int(left_curverad)), (50, 100),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, [255, 128, 0], thickness=3)
+    cv2.putText(img_overlay, "offset: %.2fm"%(center_offset), (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, [255, 128, 0], thickness=3)  
     if show_model == 1:
         L1_1 = cv2.resize(img_overlay, None, fx=0.5, fy=0.5)
         conf, similarity = laneDetector.ComputeConf(left_fit, right_fit)
-        cv2.putText(L1_1, "s, c: %d %d"%(int(similarity), int(conf)), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
+        cv2.putText(L1_1, "s, c: %d, %d"%(int(similarity), int(conf)), (350, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, [255, 128, 0], thickness=3)
         L1_2 = cv2.cvtColor(cv2.resize(binary_edges*255, None, fx=0.5, fy=0.5), cv2.COLOR_GRAY2RGB)
         L2_1 = cv2.cvtColor(cv2.resize(bin_edge_pers*255, None, fx=0.5, fy=0.5), cv2.COLOR_GRAY2RGB)
         L2_2 = cv2.resize(img_lane_windows, None, fx=0.5, fy=0.5)
@@ -492,7 +547,7 @@ util.plot_stack(img_res)
 util.plot_stack(img_res)
 ```
 
-```{.python .input}
+```{.python .input  n=8}
 # Import everything needed to edit/save/watch video clips
 from moviepy.editor import VideoFileClip
 from IPython.display import HTML
@@ -501,9 +556,9 @@ def callback(img):
     img = FrameProcess(img, track_similarity=90, track_conf=50, show_model=1)
     return img
    
-#input_video = "../project_video.mp4" ; white_output = 'output/0.mp4'; 
+input_video = "../project_video.mp4" ; white_output = 'output/0.mp4'; 
 #input_video = "../challenge_video.mp4" ; white_output = 'output/1.mp4'; 
-input_video = "../harder_challenge_video.mp4" ; white_output = 'output/2.mp4'; 
+#input_video = "../harder_challenge_video.mp4" ; white_output = './output/2.mp4'; 
 
 # To speed up the testing process you may want to try your pipeline on a shorter subclip of the video
 # To do so add .subclip(start_second,end_second) to the end of the line below
@@ -512,17 +567,39 @@ input_video = "../harder_challenge_video.mp4" ; white_output = 'output/2.mp4';
 ##clip1 = VideoFileClip("test_videos/solidWhiteRight.mp4").subclip(0,5)
 clip1 = VideoFileClip(input_video)
 # NOTE: this function expects color images!!
-white_clip = clip1.fl_image(callback).subclip(0,1)
+white_clip = clip1.fl_image(callback).subclip(0, 5)
 #white_clip = clip1.fl_image(callback)
 
 
 %time white_clip.write_videofile(white_output, audio=False)
 ```
 
-```{.python .input}
+```{.python .input  n=9}
 HTML("""
 <video width="960" height="540" controls>
   <source src="{0}">
 </video>
 """.format(white_output))
+```
+
+```{.python .input}
+# Import everything needed to edit/save/watch video clips
+from moviepy.editor import VideoFileClip
+import os
+
+def callback(img):
+    img = FrameProcess(img, track_similarity=90, track_conf=50, show_model=0)
+    return img
+   
+input_videos = []
+input_videos.append("../project_video.mp4" )
+input_videos.append("../challenge_video.mp4")
+input_videos.append("../harder_challenge_video.mp4")
+
+
+for input_video in input_videos:
+    clip = VideoFileClip(input_video)
+    white_clip = clip.fl_image(callback)
+    base = os.path.basename(input_video)
+    white_clip.write_videofile('output/'+base, audio=False)
 ```

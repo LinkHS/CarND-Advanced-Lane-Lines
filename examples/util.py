@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_comparison(ori_img, res_img, ori_tit='Original', res_tit='Result', fontsize=30, ori_cmap='gray', res_cmap='gray'):
+def plot_comparison(ori_img, res_img, ori_tit='Original', res_tit='Result', fontsize=30, 
+                    ori_cmap='gray', res_cmap='gray'):
     f, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 9))
     f.tight_layout()
 
@@ -51,7 +52,8 @@ class PersTrans():
     def computeM(pts_src, pts_dst, img=None):
         """
         @pts_src, Coordinates of quadrangle vertices in the source image.
-                  Shoud follow the order of up-left, up-right, down-left, down-right for displaying while img != None
+                  Shoud follow the order of up-left, up-right, down-left, down-right for displaying
+                  while img != None
         @pts_dst, Coordinates of the corresponding quadrangle vertices in the destination image.
         """
 
@@ -202,7 +204,8 @@ class LaneDetector():
     5. Detect lane pixels and fit to find the lane boundary.
     6. Determine the curvature of the lane and vehicle position with respect to center.
     7. Warp the detected lane boundaries back onto the original image.
-    8. Output visual display of the lane boundaries and numerical estimation of lane curvature and vehicle position.
+    8. Output visual display of the lane boundaries and numerical estimation 
+       of lane curvature and vehicle position.
 
     Debug:
     1. FrameID, Result Description, Comparison Images
@@ -241,6 +244,10 @@ class LaneDetector():
                np.float32([[300, 720], [940, 720], [300, 0], [940, 0]]), 
                (720, 1280)]
 
+        # pts = [np.float32([[204, 720], [1110, 720], [503, 515], [789, 515]]),
+        #        np.float32([[204, 720], [1110, 720], [204, 300], [1110, 300]]),
+        #        (720, 1280)]
+    
         self.pers_M = cv2.getPerspectiveTransform(pts[0], pts[1])
         self.pers_M_inv = np.linalg.inv(self.pers_M)
         self.pers_shape = pts[2]
@@ -292,6 +299,8 @@ class LaneDetector():
         similarity = np.std(l - r)
         center_diff = np.abs(np.mean(l) - np.mean(r)) # 400
         conf = 100 - np.abs(center_diff - 550 + center_diff - 650)/5
+        #conf = 130 - np.abs(center_diff - 650 + center_diff - 950)/3
+
         return conf, similarity
 
     @staticmethod
@@ -364,8 +373,10 @@ class LaneDetector():
             return [], [], out_img
 
         ploty = np.linspace(0, img_edges.shape[0]-1, nwindows)
-        left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2] if left_fit != None else []
-        right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]  if right_fit != None else []
+        left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2] \
+                    if left_fit != None else []
+        right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]  \
+                    if right_fit != None else []
 
         # Set height of windows - based on nwindows above and image shape
         window_height = np.int(img_edges.shape[0]//nwindows)
@@ -397,10 +408,12 @@ class LaneDetector():
                 
                 if return_result == True:
                     # Draw the windows on the visualization image
-                    cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), (0, 255, 0), 10)
+                    cv2.rectangle(out_img, (win_xleft_low, win_y_low), (win_xleft_high, win_y_high), 
+                                  (0, 255, 0), 10)
                 # Identify the nonzero pixels in x and y within the window
                 good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-                                  (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+                                  (nonzerox >= win_xleft_low) & 
+                                  (nonzerox < win_xleft_high)).nonzero()[0]
                 
                 leftx_current = int(left_fitx[-(window+1)])
                 left_lane_inds.append(good_left_inds)
@@ -410,9 +423,11 @@ class LaneDetector():
                 win_xright_high = rightx_current + margin
 
                 if return_result == True:
-                    cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), (0, 255, 0), 10)
+                    cv2.rectangle(out_img, (win_xright_low, win_y_low), (win_xright_high, win_y_high), 
+                                  (0, 255, 0), 10)
                 good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-                                   (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+                                   (nonzerox >= win_xright_low) &
+                                   (nonzerox < win_xright_high)).nonzero()[0]
 
                 rightx_current = int(right_fitx[-(window+1)])
                 right_lane_inds.append(good_right_inds)
@@ -466,12 +481,14 @@ class LaneDetector():
         return inout_img
 
     @staticmethod
-    def FindLanePixels(img_edges, leftx_base, rightx_base, nwindows=9, margin=80, minpix=10, return_result=False):
+    def FindLanePixels(img_edges, leftx_base, rightx_base, nwindows=9, margin=80, minpix=10,
+                       return_result=False):
         """
         @nwindows, Choose the number of sliding windows
         @margin, Set the width of the windows +/- margin
         @minpix, Set minimum number of pixels found to recenter window
-        @return_result, whether to return a image including processing results such as slide windows
+        @return_result, whether to return a image including processing results such as 
+                        slide windows
         """
         if return_result == False:
             out_img = img_edges
@@ -518,9 +535,11 @@ class LaneDetector():
 
             ### TO-DO: Identify the nonzero pixels in x and y within the window ###
             good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-                              (nonzerox >= win_xleft_low) & (nonzerox < win_xleft_high)).nonzero()[0]
+                              (nonzerox >= win_xleft_low) & 
+                              (nonzerox < win_xleft_high)).nonzero()[0]
             good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-                               (nonzerox >= win_xright_low) & (nonzerox < win_xright_high)).nonzero()[0]
+                               (nonzerox >= win_xright_low) & 
+                               (nonzerox < win_xright_high)).nonzero()[0]
 
             # If you found > minpix pixels, recenter next window 
             # (`right` or `leftx_current`) on their mean position
@@ -570,3 +589,63 @@ class LaneDetector():
             rightxy = [nonzerox[right_lane_inds], nonzeroy[right_lane_inds]]
 
         return leftxy, rightxy, out_img
+   
+    @staticmethod
+    def MeausreVehicelCenter(left_fit_cr, right_fit_cr, img_shape):
+        xm_per_pix = 3.7/700 # meters per pixel in x dimension
+        xc = img_shape[1] / 2
+        y_eval = img_shape[0]
+
+        if left_fit_cr == None: 
+            lx = 0
+        else:
+            A, B, C = left_fit_cr[0], left_fit_cr[1], left_fit_cr[2]
+            lx = A*y_eval*y_eval + B*y_eval + C
+
+        if right_fit_cr == None: 
+            rx = img_shape[1]
+        else:
+            A, B, C = right_fit_cr[0], right_fit_cr[1], right_fit_cr[2]
+            rx = A*y_eval*y_eval + B*y_eval + C
+
+        diff = (xc - (lx+rx)/2) * xm_per_pix
+        return diff
+
+    @staticmethod
+    def MeasureCurvature(left_fit_cr, right_fit_cr, y_eval):
+        '''
+        Calculates the curvature of polynomial functions in meters.
+        @y_eval, Define y-value where we want radius of curvature. 
+                 We'll choose the maximum y-value, corresponding to the bottom of the image.
+        '''
+        # Define conversions in x and y from pixels space to meters
+        ym_per_pix = 30/720 # meters per pixel in y dimension
+        xm_per_pix = 3.7/700 # meters per pixel in x dimension
+        y_eval *= ym_per_pix
+
+        #left_fit_cr = np.array([9.36763722e-04, -5.64150555e-02,  1.89792859e+00])
+        #right_fit_cr = np.array([7.71436220e-04, -5.02485049e-02,  5.54517977e+00])
+        #left_fit_cr = [ 3.07683280e-04, -4.44713275e-01, 3.59067572e+02] 
+        #right_fit_cr = [ 2.53380891e-04, -3.96103079e-01, 1.04908806e+03]
+        
+        if left_fit_cr == None: 
+            left_curverad = -1
+        else:
+            A = left_fit_cr[0]*xm_per_pix/(ym_per_pix*ym_per_pix)
+            B = left_fit_cr[1]*xm_per_pix/ym_per_pix
+            dy = 2*A*y_eval + B
+            ddy = 2*A
+
+            left_curverad = (1+dy**2)**1.5/np.abs(ddy)
+
+        if right_fit_cr == None:
+            right_curverad = -1
+        else:
+            A = right_fit_cr[0]*xm_per_pix/(ym_per_pix*ym_per_pix)
+            B = right_fit_cr[1]*xm_per_pix/ym_per_pix
+            dy = 2*A*y_eval + B
+            ddy = 2*A
+
+            right_curverad = (1+dy**2)**1.5/np.abs(ddy)
+
+        return left_curverad, right_curverad
